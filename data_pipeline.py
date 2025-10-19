@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 import numpy as np
 from math import radians, sin, cos, sqrt, atan2
+from io import StringIO
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -68,7 +69,7 @@ class NASAFIRMSCollector:
             
             response = requests.get(url, timeout=30)
             if response.status_code == 200:
-                df = pd.read_csv(pd.compat.StringIO(response.text))
+                df = pd.read_csv(StringIO(response.text))
                 
                 if df.empty:
                     logger.warning("No fire hotspots detected by NASA")
@@ -157,13 +158,14 @@ class AQICollector:
                     
                     if data['status'] == 'ok':
                         aqi = data['data']['aqi']
-                        iaqi = data['data']['iaqi']
+                        iaqi = data['data'].get('iaqi', {})
+                        pm25 = float(iaqi.get('pm25', {}).get('v', 0)) if iaqi else 0.0
                         
                         aqi_data.append({
                             'region': self._get_region_for_city(city),
                             'city': city,
                             'aqi': int(aqi) if aqi != '-' else 0,
-                            'pm25': float(iaqi.get('pm25', {}).get('v', 0)),
+                            'pm25': pm25,
                             'health_risk_level': self._get_health_risk_level(aqi)
                         })
                 
@@ -263,4 +265,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
