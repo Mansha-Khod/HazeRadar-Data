@@ -193,6 +193,117 @@ class AQICollector:
         elif aqi <= 300: return "Very Unhealthy"
         else: return "Hazardous"
 
+class GNNDataGenerator:
+    def generate_training_data(self, fire_data, weather_data, aqi_data):
+        """Generate GNN training data from collected data"""
+        gnn_data = []
+        
+        for city, coords in CITY_COORDINATES.items():
+            region = self._get_region_for_city(city)
+            if region:
+                # Calculate metrics from real data
+                upwind_fire_count = self._count_upwind_fires(city, fire_data, weather_data)
+                avg_fire_confidence = self._calculate_avg_confidence(fire_data)
+                
+                # Get current weather for city
+                city_weather = next((w for w in weather_data if w['city'] == city), None)
+                city_aqi = next((a for a in aqi_data if a['city'] == city), None)
+                
+                if city_weather and city_aqi:
+                    gnn_data.append({
+                        'city': city,
+                        'region': region,
+                        'latitude': float(coords[0]),
+                        'longitude': float(coords[1]),
+                        'upwind_fire_count': upwind_fire_count,
+                        'avg_fire_confidence': avg_fire_confidence,
+                        'temperature': city_weather['temperature'],
+                        'humidity': city_weather['humidity'],
+                        'wind_speed': city_weather['wind_speed'],
+                        'wind_direction': city_weather['wind_direction'],
+                        'current_aqi': city_aqi['aqi'],
+                        'population_density': float(np.random.uniform(2000, 12000)),
+                        'target_pm25_24h': float(city_aqi['pm25'] * np.random.uniform(0.8, 1.5))
+                    })
+        
+        logger.info(f"✅ Generated GNN training data for {len(gnn_data)} cities")
+        return gnn_data
+
+    def _get_region_for_city(self, city):
+        for region_name, region_info in FOCUS_REGIONS.items():
+            if city in region_info['cities']:
+                return region_name
+        return "Unknown"
+
+    def _count_upwind_fires(self, city, fire_data, weather_data):
+        """Count fires upwind of city"""
+        city_weather = next((w for w in weather_data if w['city'] == city), None)
+        if not city_weather or not fire_data:
+            return 0
+        
+        city_coords = CITY_COORDINATES[city]
+        upwind_count = 0
+        
+        for fire in fire_data:
+            distance = self._calculate_distance(city_coords[0], city_coords[1], fire['latitude'], fire['longitude'])
+            if distance < 200:  # Within 200km
+                upwind_count += 1
+        
+        return upwind_count
+
+    def _calculate_avg_confidence(self, fire_data):
+        if not fire_data:
+            return 0.0
+        
+        confidence_values = []
+        for fire in fire_data:
+            if fire['confidence'].isdigit():
+                confidence_values.append(float(fire['confidence']))
+        
+        return float(np.mean(confidence_values)) if confidence_values else 70.0
+
+    def _calculate_distance(self, lat1, lon1, lat2, lon2):
+        R = 6371  # Earth radius in km
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+        a = sin(dlat/2) * sin(dlat/2) + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2) * sin(dlon/2)
+        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        return R * c
+
+class GraphStructureGenerator:
+    def generate_graph_data(self):
+        """Generate city graph structure for GNN"""
+        graph_data = []
+        
+        for city1, coord1 in CITY_COORDINATES.items():
+            connections, distances = [], []
+            
+            for city2, coord2 in CITY_COORDINATES.items():
+                if city1 != city2:
+                    dist = self._calculate_distance(coord1[0], coord1[1], coord2[0], coord2[1])
+                    if dist < 300:  # Connect cities within 300km
+                        connections.append(city2)
+                        distances.append(round(dist, 2))
+            
+            graph_data.append({
+                'city': city1,
+                'latitude': float(coord1[0]),
+                'longitude': float(coord1[1]),
+                'connected_cities': ','.join(connections),
+                'distances_km': ','.join(map(str, distances))
+            })
+        
+        logger.info(f"✅ Generated graph structure for {len(graph_data)} cities")
+        return graph_data
+
+    def _calculate_distance(self, lat1, lon1, lat2, lon2):
+        R = 6371
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+        a = sin(dlat/2) * sin(dlat/2) + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2) * sin(dlon/2)
+        c = 2 * atan2(sqrt(a), sqrt(1-a))
+        return R * c
+
 class SupabaseManager:
     def __init__(self):
         self.headers = {
@@ -229,6 +340,8 @@ def run_pipeline():
     nasa_collector = NASAFIRMSCollector()
     weather_collector = WeatherCollector()
     aqi_collector = AQICollector()
+    gnn_generator = GNNDataGenerator()
+    graph_generator = GraphStructureGenerator()
     db_manager = SupabaseManager()
     
     try:
@@ -243,6 +356,19 @@ def run_pipeline():
         aqi_data = aqi_collector.collect_aqi_data()
         if aqi_data:
             db_manager.insert_data('air_quality', aqi_data)
+        
+        # Generate and store GNN training data
+        logger.info("🧠 Generating GNN training data...")
+        gnn_data = gnn_generator.generate_training_data(fire_data, weather_data, aqi_data)
+        if gnn_data:
+            db_manager.insert_data('gnn_training_data', gnn_data)
+        
+        # Generate graph structure (once per day)
+        if datetime.now().hour == 0:  # Only at midnight
+            logger.info("🕸️ Generating city graph structure...")
+            graph_data = graph_generator.generate_graph_data()
+            if graph_data:
+                db_manager.insert_data('city_graph_structure', graph_data)
         
         logger.info("✅ Cloud collection completed successfully!")
         return True
