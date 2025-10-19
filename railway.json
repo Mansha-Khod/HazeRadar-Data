@@ -1,5 +1,6 @@
 {
-    "build": {
-        "builder": "NIXPACKS"
-    }
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "pip install -r requirements.txt"
+  }
 }
