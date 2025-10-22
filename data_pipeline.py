@@ -65,7 +65,7 @@ class NASAFIRMSCollector:
         """Collect REAL fire data from NASA FIRMS"""
         try:
             url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{NASA_API_KEY}/VIIRS_SNPP_NRT/{INDONESIA_BBOX}/1"
-            logger.info("🔥 Fetching real NASA fire data...")
+            logger.info(" Fetching real NASA fire data...")
             
             response = requests.get(url, timeout=30)
             if response.status_code == 200:
@@ -90,7 +90,7 @@ class NASAFIRMSCollector:
                             'geom': f"POINT({lon} {lat})"
                         })
                 
-                logger.info(f"✅ Collected {len(fire_data)} real fire hotspots")
+                logger.info(f" Collected {len(fire_data)} real fire hotspots")
                 return fire_data
             else:
                 logger.error(f"NASA API error: {response.status_code}")
@@ -140,7 +140,7 @@ class WeatherCollector:
                 except Exception as e:
                     logger.error(f"Error fetching weather for {city}: {e}")
         
-        logger.info(f"✅ Collected weather data for {len(weather_data)} locations")
+        logger.info(f" Collected weather data for {len(weather_data)} locations")
         return weather_data
 
 class AQICollector:
@@ -174,7 +174,7 @@ class AQICollector:
             except Exception as e:
                 logger.error(f"Error fetching AQI for {city}: {e}")
         
-        logger.info(f"✅ Collected AQI data for {len(aqi_data)} cities")
+        logger.info(f" Collected AQI data for {len(aqi_data)} cities")
         return aqi_data
 
     def _get_region_for_city(self, city):
@@ -226,7 +226,7 @@ class GNNDataGenerator:
                         'target_pm25_24h': float(city_aqi['pm25'] * np.random.uniform(0.8, 1.5))
                     })
         
-        logger.info(f"✅ Generated GNN training data for {len(gnn_data)} cities")
+        logger.info(f" Generated GNN training data for {len(gnn_data)} cities")
         return gnn_data
 
     def _get_region_for_city(self, city):
@@ -293,7 +293,7 @@ class GraphStructureGenerator:
                 'distances_km': ','.join(map(str, distances))
             })
         
-        logger.info(f"✅ Generated graph structure for {len(graph_data)} cities")
+        logger.info(f" Generated graph structure for {len(graph_data)} cities")
         return graph_data
 
     def _calculate_distance(self, lat1, lon1, lat2, lon2):
@@ -323,19 +323,19 @@ class SupabaseManager:
             response = requests.post(url, headers=self.headers, json=data)
             
             if response.status_code in [200, 201]:
-                logger.info(f"✅ Inserted {len(data)} records into {table_name}")
+                logger.info(f" Inserted {len(data)} records into {table_name}")
                 return True
             else:
-                logger.error(f"❌ Failed to insert into {table_name}: {response.status_code}")
+                logger.error(f" Failed to insert into {table_name}: {response.status_code}")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Error inserting into {table_name}: {e}")
+            logger.error(f" Error inserting into {table_name}: {e}")
             return False
 
 def run_pipeline():
     """Run one complete data collection cycle"""
-    logger.info("🚀 Starting cloud data collection...")
+    logger.info(" Starting cloud data collection...")
     
     nasa_collector = NASAFIRMSCollector()
     weather_collector = WeatherCollector()
@@ -358,7 +358,7 @@ def run_pipeline():
             db_manager.insert_data('air_quality', aqi_data)
         
         # Generate and store GNN training data
-        logger.info("🧠 Generating GNN training data...")
+        logger.info(" Generating GNN training data...")
         gnn_data = gnn_generator.generate_training_data(fire_data, weather_data, aqi_data)
         if gnn_data:
             db_manager.insert_data('gnn_training_data', gnn_data)
@@ -370,16 +370,16 @@ def run_pipeline():
             if graph_data:
                 db_manager.insert_data('city_graph_structure', graph_data)
         
-        logger.info("✅ Cloud collection completed successfully!")
+        logger.info(" Cloud collection completed successfully!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Cloud collection failed: {e}")
+        logger.error(f" Cloud collection failed: {e}")
         return False
 
 def main():
     """Main cloud scheduler"""
-    logger.info("🌐 HazeRadar Cloud Service Started - 24/7 Operation")
+    logger.info(" HazeRadar Cloud Service Started - 24/7 Operation")
     
     schedule.every(3).hours.do(run_pipeline)
     
@@ -391,5 +391,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
