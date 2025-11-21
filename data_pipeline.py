@@ -309,32 +309,73 @@ class SupabaseManager:
     def __init__(self, url=SUPABASE_URL, key=SUPABASE_KEY):
         self.url = url.rstrip("/")
         self.key = key
+        
+        # DEBUG: Check if key is properly set
+        logger.info(f"Supabase URL: {self.url}")
+        logger.info(f"Supabase Key provided: {'YES' if self.key else 'NO'}")
+        logger.info(f"Supabase Key length: {len(self.key) if self.key else 0}")
+        
+        if not self.key:
+            logger.error("SUPABASE_KEY is empty! Please check your environment variables.")
+            logger.error("Current SUPABASE_KEY value: %s", self.key)
+        
         self.headers = {
             "apikey": self.key,
-            "Authorization": f"Bearer {self.key}" if self.key else "",
+            "Authorization": f"Bearer {self.key}",
             "Content-Type": "application/json",
             "Prefer": "return=minimal"
         }
         
         self.insert_batch = 100
 
+    def test_connection(self):
+        """Test Supabase connection before inserting data"""
+        test_url = f"{self.url}/rest/v1/"
+        try:
+            response = session.get(test_url, headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                logger.info(" Supabase connection test: SUCCESS")
+                return True
+            else:
+                logger.error(f"Supabase connection test failed: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Supabase connection error: {e}")
+            return False
+
     def insert_data(self, table_name, data):
         if not data:
             logger.debug("No data to insert into %s", table_name)
             return True
+            
+        # Test connection first
+        if not self.test_connection():
+            logger.error("Cannot insert data - Supabase connection failed")
+            return False
+            
         url = f"{self.url}/rest/v1/{table_name}"
         
         for i in range(0, len(data), self.insert_batch):
             chunk = data[i:i+self.insert_batch]
             try:
                 r = session.post(url, headers=self.headers, json=chunk, timeout=20)
+                
                 if r.status_code in (200, 201, 204):
                     logger.info("Inserted %d records into %s", len(chunk), table_name)
                 else:
+                    logger.error(" Insert failed %s -> %s", table_name, r.status_code)
+                    logger.error("Full response: %s", r.text)
                     
-                    logger.warning("Insert failed %s -> %s / resp: %s", table_name, r.status_code, r.text[:200])
                     
-                    if r.status_code == 429:
+                    if r.status_code == 401:
+                        logger.error("AUTHENTICATION ERROR: Check your SUPABASE_KEY")
+                        logger.error("Make sure you're using the SERVICE ROLE key, not anon key")
+                        return False
+                    elif r.status_code == 404:
+                        logger.error("TABLE NOT FOUND: Table '%s' doesn't exist", table_name)
+                        return False
+                    elif r.status_code == 429:
                         wait = 5 + random.random()*5
                         logger.warning("Rate limited. Sleeping %.1fs", wait)
                         time.sleep(wait)
@@ -355,6 +396,16 @@ class SupabaseManager:
 
 def run_pipeline():
     logger.info("Starting data collection cycle (run_pipeline)")
+    
+    # DEBUG: Check all environment variables
+    logger.info("=== ENVIRONMENT VARIABLES ===")
+    logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
+    logger.info(f"SUPABASE_KEY set: {bool(SUPABASE_KEY)}")
+    logger.info(f"SUPABASE_KEY length: {len(SUPABASE_KEY) if SUPABASE_KEY else 0}")
+    logger.info(f"NASA_API_KEY: {NASA_API_KEY}")
+    logger.info(f"OPENWEATHER_API_KEY: {OPENWEATHER_API_KEY}")
+    logger.info(f"WAQI_API_TOKEN: {'SET' if WAQI_API_TOKEN else 'NOT SET'}")
+    
     nasa = NASAFIRMSCollector()
     weather = WeatherCollector()
     aqi = AQICollector()
@@ -365,26 +416,31 @@ def run_pipeline():
     try:
         fire_data = nasa.collect_fire_data()
         if fire_data:
-            db.insert_data("fire_hotspots", fire_data)
+            success = db.insert_data("fire_hotspots", fire_data)
+            logger.info(f"Fire hotspots insert: {'SUCCESS' if success else 'FAILED'}")
 
         weather_data = weather.collect_weather_data()
         if weather_data:
-            db.insert_data("weather_data", weather_data)
+            success = db.insert_data("weather_data", weather_data)
+            logger.info(f"Weather data insert: {'SUCCESS' if success else 'FAILED'}")
 
         aqi_data = aqi.collect_aqi_data()
         if aqi_data:
-            db.insert_data("air_quality", aqi_data)
+            success = db.insert_data("air_quality", aqi_data)
+            logger.info(f"Air quality insert: {'SUCCESS' if success else 'FAILED'}")
 
         logger.info("Generating GNN training rows")
         gnn_rows = gnn_gen.generate_training_data(fire_data, weather_data, aqi_data)
         if gnn_rows:
-            db.insert_data("gnn_training_data", gnn_rows)
+            success = db.insert_data("gnn_training_data", gnn_rows)
+            logger.info(f"GNN training data insert: {'SUCCESS' if success else 'FAILED'}")
 
         now = datetime.now()
         if now.hour == 0 and random.random() < 0.9:
             graph_rows = graph_gen.generate_graph_data()
             if graph_rows:
-                db.insert_data("city_graph_structure", graph_rows)
+                success = db.insert_data("city_graph_structure", graph_rows)
+                logger.info(f"Graph structure insert: {'SUCCESS' if success else 'FAILED'}")
 
         logger.info("Data collection cycle finished successfully")
         return True
@@ -416,3 +472,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
