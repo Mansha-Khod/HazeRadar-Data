@@ -316,7 +316,7 @@ class SupabaseManager:
         logger.info(f"Supabase Key length: {len(self.key) if self.key else 0}")
         
         if not self.key:
-            logger.error("SUPABASE_KEY is empty! Please check your environment variables.")
+            logger.error("❌ SUPABASE_KEY is empty! Please check your environment variables.")
             logger.error("Current SUPABASE_KEY value: %s", self.key)
         
         self.headers = {
@@ -334,10 +334,10 @@ class SupabaseManager:
         try:
             response = session.get(test_url, headers=self.headers, timeout=10)
             if response.status_code == 200:
-                logger.info(" Supabase connection test: SUCCESS")
+                logger.info("Supabase connection test: SUCCESS")
                 return True
             else:
-                logger.error(f"Supabase connection test failed: {response.status_code}")
+                logger.error(f" Supabase connection test failed: {response.status_code}")
                 logger.error(f"Response: {response.text}")
                 return False
         except Exception as e:
@@ -364,10 +364,10 @@ class SupabaseManager:
                 if r.status_code in (200, 201, 204):
                     logger.info("Inserted %d records into %s", len(chunk), table_name)
                 else:
-                    logger.error(" Insert failed %s -> %s", table_name, r.status_code)
+                    logger.error("Insert failed %s -> %s", table_name, r.status_code)
                     logger.error("Full response: %s", r.text)
                     
-                    
+                    # Specific error handling
                     if r.status_code == 401:
                         logger.error("AUTHENTICATION ERROR: Check your SUPABASE_KEY")
                         logger.error("Make sure you're using the SERVICE ROLE key, not anon key")
@@ -472,4 +472,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
