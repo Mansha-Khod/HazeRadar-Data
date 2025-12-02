@@ -310,13 +310,13 @@ class SupabaseManager:
         self.url = url.rstrip("/")
         self.key = key
         
-        # DEBUG: Check if key is properly set
+        
         logger.info(f"Supabase URL: {self.url}")
         logger.info(f"Supabase Key provided: {'YES' if self.key else 'NO'}")
         logger.info(f"Supabase Key length: {len(self.key) if self.key else 0}")
         
         if not self.key:
-            logger.error("❌ SUPABASE_KEY is empty! Please check your environment variables.")
+            logger.error(" SUPABASE_KEY is empty! Please check your environment variables.")
             logger.error("Current SUPABASE_KEY value: %s", self.key)
         
         self.headers = {
@@ -349,7 +349,7 @@ class SupabaseManager:
             logger.debug("No data to insert into %s", table_name)
             return True
             
-        # Test connection first
+        
         if not self.test_connection():
             logger.error("Cannot insert data - Supabase connection failed")
             return False
@@ -367,7 +367,7 @@ class SupabaseManager:
                     logger.error("Insert failed %s -> %s", table_name, r.status_code)
                     logger.error("Full response: %s", r.text)
                     
-                    # Specific error handling
+                    
                     if r.status_code == 401:
                         logger.error("AUTHENTICATION ERROR: Check your SUPABASE_KEY")
                         logger.error("Make sure you're using the SERVICE ROLE key, not anon key")
@@ -397,7 +397,7 @@ class SupabaseManager:
 def run_pipeline():
     logger.info("Starting data collection cycle (run_pipeline)")
     
-    # DEBUG: Check all environment variables
+    #
     logger.info("=== ENVIRONMENT VARIABLES ===")
     logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
     logger.info(f"SUPABASE_KEY set: {bool(SUPABASE_KEY)}")
@@ -472,5 +472,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
