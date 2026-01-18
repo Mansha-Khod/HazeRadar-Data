@@ -240,7 +240,7 @@ class GNNDataGenerator:
             seed = abs(hash(city)) % (2**32)
             r = np.random.RandomState(seed)
             pop_density = float(r.uniform(2000, 12000))
-            target_pm25 = float(city_aqi["pm25"] * r.uniform(0.8, 1.5)) if city_aqi.get("pm25") is not None else 0.0
+            target_pm25 = float(city_aqi["pm25"]) if city_aqi.get("pm25") else 0.0
             rows.append({
                 "city": city,
                 "region": region,
@@ -472,6 +472,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
