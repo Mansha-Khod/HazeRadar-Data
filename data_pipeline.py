@@ -26,27 +26,42 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "https://daxrnmvkpikjvvzgrhko.supabase.
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 
-INDONESIA_BBOX = "95,-11,141,7"
+INDONESIA_BBOX = "106,-8,109,-5"
 
 FOCUS_REGIONS = {
-    "Riau": {"bounds": {"lat_min": -1.0, "lat_max": 2.0, "lon_min": 100.0, "lon_max": 103.0},
-             "cities": ["Pekanbaru", "Dumai", "Bengkalis"], "fire_risk": "Very High"},
-    "Central_Kalimantan": {"bounds": {"lat_min": -4.0, "lat_max": -1.0, "lon_min": 111.0, "lon_max": 116.0},
-                           "cities": ["Palangkaraya", "Sampit", "Pangkalan Bun"], "fire_risk": "High"},
-    "South_Sumatra": {"bounds": {"lat_min": -5.0, "lat_max": -1.0, "lon_min": 102.0, "lon_max": 107.0},
-                      "cities": ["Palembang", "Prabumulih", "Lubuklinggau"], "fire_risk": "High"},
-    "West_Kalimantan": {"bounds": {"lat_min": -2.0, "lat_max": 1.0, "lon_min": 108.0, "lon_max": 111.0},
-                        "cities": ["Pontianak", "Singkawang", "Sintang"], "fire_risk": "Medium-High"},
-    "Jambi": {"bounds": {"lat_min": -2.5, "lat_max": -0.5, "lon_min": 101.5, "lon_max": 105.5},
-              "cities": ["Jambi", "Sungai Penuh", "Muara Bungo"], "fire_risk": "Medium-High"}
+    "North_West_Java": {
+        "bounds": {"lat_min": -6.8, "lat_max": -6.0, "lon_min": 106.8, "lon_max": 107.8},
+        "cities": ["Bekasi", "Karawang", "Subang"],
+        "fire_risk": "Medium"
+    },
+    "Central_West_Java": {
+        "bounds": {"lat_min": -7.2, "lat_max": -6.5, "lon_min": 107.2, "lon_max": 108.2},
+        "cities": ["Bandung", "Cimahi", "West Bandung", "Sumedang"],
+        "fire_risk": "Medium"
+    },
+    "South_West_Java": {
+        "bounds": {"lat_min": -7.8, "lat_max": -7.0, "lon_min": 106.8, "lon_max": 108.5},
+        "cities": ["Tasikmalaya", "Cianjur"],
+        "fire_risk": "Medium-High"
+    },
+    "East_West_Java": {
+        "bounds": {"lat_min": -6.8, "lat_max": -6.2, "lon_min": 107.8, "lon_max": 108.5},
+        "cities": ["Indramayu"],
+        "fire_risk": "Medium"
+    }
 }
 
 CITY_COORDINATES = {
-    "Pekanbaru": (0.5071, 101.4478), "Dumai": (1.6654, 101.4476), "Bengkalis": (1.4892, 102.0795),
-    "Palangkaraya": (-2.2086, 113.9167), "Sampit": (-2.5333, 112.95), "Pangkalan Bun": (-2.6833, 111.6167),
-    "Palembang": (-2.9910, 104.7574), "Prabumulih": (-3.4324, 104.2345), "Lubuklinggau": (-3.2967, 102.8617),
-    "Pontianak": (-0.0226, 109.3425), "Singkawang": (0.9079, 108.9846), "Sintang": (0.0694, 111.4931),
-    "Jambi": (-1.61, 103.6072), "Sungai Penuh": (-2.0631, 101.3872), "Muara Bungo": (-1.5117, 102.1036)
+    "Bekasi": (-6.2383, 106.9756),
+    "Karawang": (-6.3063, 107.3019),
+    "Sumedang": (-6.8575, 107.9167),
+    "Tasikmalaya": (-7.3274, 108.2207),
+    "Bandung": (-6.9175, 107.6191),
+    "Subang": (-6.5697, 107.7631),
+    "Indramayu": (-6.3269, 108.3200),
+    "Cimahi": (-6.8722, 107.5425),
+    "West Bandung": (-6.8597, 107.4858),
+    "Cianjur": (-6.8167, 107.1392)
 }
 
 
@@ -196,7 +211,6 @@ class AQICollector:
                     continue
                 d = r.json()
                 if d.get("status") != "ok":
-                   
                     logger.debug("WAQI not ok for %s: %s", city, d.get("data"))
                     time.sleep(0.4 + random.random()*0.5)
                     continue
@@ -239,8 +253,10 @@ class GNNDataGenerator:
 
             seed = abs(hash(city)) % (2**32)
             r = np.random.RandomState(seed)
-            pop_density = float(r.uniform(2000, 12000))
-            target_pm25 = float(city_aqi["pm25"]) if city_aqi.get("pm25") else 0.0
+            pop_density = float(r.uniform(3000, 15000))
+            
+            current_pm25 = float(city_aqi["pm25"]) if city_aqi.get("pm25") else 0.0
+            
             rows.append({
                 "city": city,
                 "region": region,
@@ -253,8 +269,8 @@ class GNNDataGenerator:
                 "wind_speed": float(city_weather["wind_speed"]),
                 "wind_direction": float(city_weather["wind_direction"]),
                 "current_aqi": int(city_aqi["aqi"]),
-                "population_density": pop_density,
-                "target_pm25_24h": target_pm25
+                "current_pm25": current_pm25,
+                "population_density": pop_density
             })
         logger.info("Generated GNN rows for %d cities", len(rows))
         return rows
@@ -267,7 +283,7 @@ class GNNDataGenerator:
         cnt = 0
         for f in fire_data:
             d = haversine_km(c_lat, c_lon, f["latitude"], f["longitude"])
-            if d < 200:
+            if d < 100:
                 cnt += 1
         return cnt
 
@@ -277,7 +293,6 @@ class GNNDataGenerator:
         vals = []
         for f in fire_data:
             c = f.get("confidence", "")
-            
             if isinstance(c, str) and c.isdigit():
                 vals.append(float(c))
         return float(np.mean(vals)) if vals else 70.0
@@ -292,7 +307,7 @@ class GraphStructureGenerator:
                 if city1 == city2:
                     continue
                 d = haversine_km(coord1[0], coord1[1], coord2[0], coord2[1])
-                if d < 300:
+                if d < 150:
                     conns.append(city2)
                     dists.append(round(d, 2))
             rows.append({
@@ -310,13 +325,12 @@ class SupabaseManager:
         self.url = url.rstrip("/")
         self.key = key
         
-        
         logger.info(f"Supabase URL: {self.url}")
         logger.info(f"Supabase Key provided: {'YES' if self.key else 'NO'}")
         logger.info(f"Supabase Key length: {len(self.key) if self.key else 0}")
         
         if not self.key:
-            logger.error(" SUPABASE_KEY is empty! Please check your environment variables.")
+            logger.error("SUPABASE_KEY is empty! Please check your environment variables.")
             logger.error("Current SUPABASE_KEY value: %s", self.key)
         
         self.headers = {
@@ -329,7 +343,6 @@ class SupabaseManager:
         self.insert_batch = 100
 
     def test_connection(self):
-        """Test Supabase connection before inserting data"""
         test_url = f"{self.url}/rest/v1/"
         try:
             response = session.get(test_url, headers=self.headers, timeout=10)
@@ -337,7 +350,7 @@ class SupabaseManager:
                 logger.info("Supabase connection test: SUCCESS")
                 return True
             else:
-                logger.error(f" Supabase connection test failed: {response.status_code}")
+                logger.error(f"Supabase connection test failed: {response.status_code}")
                 logger.error(f"Response: {response.text}")
                 return False
         except Exception as e:
@@ -349,7 +362,6 @@ class SupabaseManager:
             logger.debug("No data to insert into %s", table_name)
             return True
             
-        
         if not self.test_connection():
             logger.error("Cannot insert data - Supabase connection failed")
             return False
@@ -366,7 +378,6 @@ class SupabaseManager:
                 else:
                     logger.error("Insert failed %s -> %s", table_name, r.status_code)
                     logger.error("Full response: %s", r.text)
-                    
                     
                     if r.status_code == 401:
                         logger.error("AUTHENTICATION ERROR: Check your SUPABASE_KEY")
@@ -397,7 +408,6 @@ class SupabaseManager:
 def run_pipeline():
     logger.info("Starting data collection cycle (run_pipeline)")
     
-    #
     logger.info("=== ENVIRONMENT VARIABLES ===")
     logger.info(f"SUPABASE_URL: {SUPABASE_URL}")
     logger.info(f"SUPABASE_KEY set: {bool(SUPABASE_KEY)}")
@@ -454,13 +464,13 @@ def main():
     logger.info("HazeRadar Cloud Service started")
     
     def scheduled_job():
-        jitter = random.uniform(-60, 60)  
+        jitter = random.uniform(-60, 60)
         if jitter > 0:
-            time.sleep(min(jitter, 30))  
+            time.sleep(min(jitter, 30))
         run_pipeline()
+    
     schedule.every(3).hours.do(scheduled_job)
 
-    
     run_pipeline()
 
     try:
@@ -472,7 +482,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
