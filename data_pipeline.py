@@ -64,6 +64,19 @@ CITY_COORDINATES = {
     "Cianjur": (-6.8167, 107.1392)
 }
 
+WAQI_CITY_MAPPING = {
+    "Bekasi": "bekasi",
+    "Karawang": "karawang",
+    "Sumedang": "sumedang",
+    "Tasikmalaya": "tasikmalaya",
+    "Bandung": "bandung",
+    "Subang": "subang",
+    "Indramayu": "indramayu",
+    "Cimahi": "cimahi",
+    "West Bandung": "west-bandung",
+    "Cianjur": "cianjur"
+}
+
 
 def haversine_km(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -179,7 +192,6 @@ class WeatherCollector:
                     main = data.get("main", {})
                     wind = data.get("wind", {})
                     out.append({
-                        "region": region_name,
                         "city": city,
                         "latitude": float(lat),
                         "longitude": float(lon),
@@ -198,41 +210,121 @@ class WeatherCollector:
         return out
 
 class AQICollector:
+    def _convert_aqi_to_pm25(self, aqi):
+        """
+        Convert PM2.5 AQI value back to PM2.5 concentration (µg/m³)
+        Using EPA AQI breakpoints
+        """
+        if aqi <= 50:
+            return aqi * 12.0 / 50.0
+        elif aqi <= 100:
+            return 12.1 + (aqi - 51) * (35.4 - 12.1) / (100 - 51)
+        elif aqi <= 150:
+            return 35.5 + (aqi - 101) * (55.4 - 35.5) / (150 - 101)
+        elif aqi <= 200:
+            return 55.5 + (aqi - 151) * (150.4 - 55.5) / (200 - 151)
+        elif aqi <= 300:
+            return 150.5 + (aqi - 201) * (250.4 - 150.5) / (300 - 201)
+        else:
+            return 250.5 + (aqi - 301) * (350.4 - 250.5) / (400 - 301)
+    
     def collect_aqi_data(self):
         out = []
         for city in CITY_COORDINATES.keys():
-            qcity = city.lower().replace(" ", "-")
-            url = f"https://api.waqi.info/feed/{qcity}/?token={WAQI_API_TOKEN}"
-            try:
-                r = session.get(url, timeout=12)
-                if r.status_code != 200:
-                    logger.warning("WAQI failed for %s: %s", city, r.status_code)
-                    time.sleep(0.8 + random.random()*0.5)
+            qcity = WAQI_CITY_MAPPING.get(city, city.lower().replace(" ", "-"))
+            
+            search_variants = [
+                qcity,
+                f"{qcity}/indonesia",
+                f"indonesia/{qcity}",
+                city.lower().replace(" ", "")
+            ]
+            
+            success = False
+            for variant in search_variants:
+                url = f"https://api.waqi.info/feed/{variant}/?token={WAQI_API_TOKEN}"
+                try:
+                    r = session.get(url, timeout=12)
+                    if r.status_code != 200:
+                        logger.debug("WAQI failed for %s variant '%s': %s", city, variant, r.status_code)
+                        time.sleep(0.5)
+                        continue
+                    
+                    d = r.json()
+                    if d.get("status") != "ok":
+                        logger.debug("WAQI not ok for %s variant '%s'", city, variant)
+                        time.sleep(0.5)
+                        continue
+                    
+                    logger.debug("WAQI raw response for %s: %s", city, json.dumps(d.get("data", {}), indent=2)[:500])
+                    
+                    aqi_value = d["data"].get("aqi", 0)
+                    iaqi = d["data"].get("iaqi", {})
+                    
+                    pm25_aqi = 0.0
+                    if iaqi and "pm25" in iaqi:
+                        try:
+                            pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
+                        except Exception:
+                            pm25_aqi = 0.0
+                    
+                    pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
+                    
+                    final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) or (isinstance(aqi_value, str) and str(aqi_value).replace('.','').isdigit()) else 0
+                    
+                    out.append({
+                        "city": city,
+                        "aqi": final_aqi,
+                        "pm25": pm25_concentration,
+                        "health_risk_level": health_risk_from_aqi(final_aqi)
+                    })
+                    logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5 AQI=%.1f, PM2.5 Concentration=%.1f µg/m³ using variant '%s'", 
+                               city, final_aqi, pm25_aqi, pm25_concentration, variant)
+                    success = True
+                    time.sleep(0.7 + random.random()*0.4)
+                    break
+                    
+                except Exception as e:
+                    logger.debug("WAQI error for %s variant '%s': %s", city, variant, e)
+                    time.sleep(0.5)
                     continue
-                d = r.json()
-                if d.get("status") != "ok":
-                    logger.debug("WAQI not ok for %s: %s", city, d.get("data"))
-                    time.sleep(0.4 + random.random()*0.5)
-                    continue
-                aqi = d["data"].get("aqi", 0)
-                iaqi = d["data"].get("iaqi", {})
-                pm25 = 0.0
-                if iaqi and "pm25" in iaqi:
-                    try:
-                        pm25 = float(iaqi["pm25"].get("v", 0.0))
-                    except Exception:
-                        pm25 = 0.0
-                out.append({
-                    "region": get_region_for_city(city),
-                    "city": city,
-                    "aqi": int(aqi) if isinstance(aqi, (int, float)) or (isinstance(aqi, str) and aqi.isdigit()) else 0,
-                    "pm25": pm25,
-                    "health_risk_level": health_risk_from_aqi(aqi)
-                })
-                time.sleep(0.7 + random.random()*0.4)
-            except Exception as e:
-                logger.exception("WAQI error for %s: %s", city, e)
-                time.sleep(1 + random.random()*0.5)
+            
+            if not success:
+                logger.warning("Could not fetch AQI data for %s after trying all variants", city)
+                lat, lon = CITY_COORDINATES[city]
+                url = f"https://api.waqi.info/feed/geo:{lat};{lon}/?token={WAQI_API_TOKEN}"
+                try:
+                    r = session.get(url, timeout=12)
+                    if r.status_code == 200:
+                        d = r.json()
+                        if d.get("status") == "ok":
+                            aqi_value = d["data"].get("aqi", 0)
+                            iaqi = d["data"].get("iaqi", {})
+                            
+                            pm25_aqi = 0.0
+                            if iaqi and "pm25" in iaqi:
+                                try:
+                                    pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
+                                except Exception:
+                                    pm25_aqi = 0.0
+                            
+                            pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
+                            
+                            final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) or (isinstance(aqi_value, str) and str(aqi_value).replace('.','').isdigit()) else 0
+                            
+                            out.append({
+                                "city": city,
+                                "aqi": final_aqi,
+                                "pm25": pm25_concentration,
+                                "health_risk_level": health_risk_from_aqi(final_aqi)
+                            })
+                            logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5 AQI=%.1f, PM2.5 Concentration=%.1f µg/m³ using geo coordinates", 
+                                       city, final_aqi, pm25_aqi, pm25_concentration)
+                except Exception as e:
+                    logger.error("Geo-based WAQI lookup failed for %s: %s", city, e)
+            
+            time.sleep(1)
+            
         logger.info("Collected AQI for %d cities", len(out))
         return out
 
@@ -246,8 +338,13 @@ class GNNDataGenerator:
                 continue
             city_weather = next((w for w in weather_data if w["city"] == city), None)
             city_aqi = next((a for a in aqi_data if a["city"] == city), None)
-            if not city_weather or not city_aqi:
+            if not city_weather:
+                logger.warning("No weather data for %s, skipping GNN row", city)
                 continue
+            if not city_aqi:
+                logger.warning("No AQI data for %s, skipping GNN row", city)
+                continue
+            
             upwind_count = self._count_upwind_fires(city, fire_data, weather_data)
             avg_conf = self._calculate_avg_confidence(fire_data)
 
