@@ -210,121 +210,65 @@ class WeatherCollector:
         return out
 
 class AQICollector:
-    def _convert_aqi_to_pm25(self, aqi):
+    def _pm25_to_aqi(self, pm25):
         """
-        Convert PM2.5 AQI value back to PM2.5 concentration (µg/m³)
-        Using EPA AQI breakpoints
+        Convert PM2.5 concentration (µg/m³) to AQI using EPA breakpoints
         """
-        if aqi <= 50:
-            return aqi * 12.0 / 50.0
-        elif aqi <= 100:
-            return 12.1 + (aqi - 51) * (35.4 - 12.1) / (100 - 51)
-        elif aqi <= 150:
-            return 35.5 + (aqi - 101) * (55.4 - 35.5) / (150 - 101)
-        elif aqi <= 200:
-            return 55.5 + (aqi - 151) * (150.4 - 55.5) / (200 - 151)
-        elif aqi <= 300:
-            return 150.5 + (aqi - 201) * (250.4 - 150.5) / (300 - 201)
+        if pm25 <= 12.0:
+            return int((50 / 12.0) * pm25)
+        elif pm25 <= 35.4:
+            return int(51 + ((100 - 51) / (35.4 - 12.1)) * (pm25 - 12.1))
+        elif pm25 <= 55.4:
+            return int(101 + ((150 - 101) / (55.4 - 35.5)) * (pm25 - 35.5))
+        elif pm25 <= 150.4:
+            return int(151 + ((200 - 151) / (150.4 - 55.5)) * (pm25 - 55.5))
+        elif pm25 <= 250.4:
+            return int(201 + ((300 - 201) / (250.4 - 150.5)) * (pm25 - 150.5))
         else:
-            return 250.5 + (aqi - 301) * (350.4 - 250.5) / (400 - 301)
+            return int(301 + ((400 - 301) / (350.4 - 250.5)) * (pm25 - 250.5))
     
     def collect_aqi_data(self):
         out = []
         for city in CITY_COORDINATES.keys():
-            qcity = WAQI_CITY_MAPPING.get(city, city.lower().replace(" ", "-"))
+            lat, lon = CITY_COORDINATES[city]
             
-            search_variants = [
-                qcity,
-                f"{qcity}/indonesia",
-                f"indonesia/{qcity}",
-                city.lower().replace(" ", "")
-            ]
-            
-            success = False
-            for variant in search_variants:
-                url = f"https://api.waqi.info/feed/{variant}/?token={WAQI_API_TOKEN}"
-                try:
-                    r = session.get(url, timeout=12)
-                    if r.status_code != 200:
-                        logger.debug("WAQI failed for %s variant '%s': %s", city, variant, r.status_code)
-                        time.sleep(0.5)
-                        continue
-                    
-                    d = r.json()
-                    if d.get("status") != "ok":
-                        logger.debug("WAQI not ok for %s variant '%s'", city, variant)
-                        time.sleep(0.5)
-                        continue
-                    
-                    logger.debug("WAQI raw response for %s: %s", city, json.dumps(d.get("data", {}), indent=2)[:500])
-                    
-                    aqi_value = d["data"].get("aqi", 0)
-                    iaqi = d["data"].get("iaqi", {})
-                    
-                    pm25_aqi = 0.0
-                    if iaqi and "pm25" in iaqi:
-                        try:
-                            pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
-                        except Exception:
-                            pm25_aqi = 0.0
-                    
-                    pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
-                    
-                    final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) or (isinstance(aqi_value, str) and str(aqi_value).replace('.','').isdigit()) else 0
-                    
-                    out.append({
-                        "city": city,
-                        "aqi": final_aqi,
-                        "pm25": pm25_concentration,
-                        "health_risk_level": health_risk_from_aqi(final_aqi)
-                    })
-                    logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5 AQI=%.1f, PM2.5 Concentration=%.1f µg/m³ using variant '%s'", 
-                               city, final_aqi, pm25_aqi, pm25_concentration, variant)
-                    success = True
-                    time.sleep(0.7 + random.random()*0.4)
-                    break
-                    
-                except Exception as e:
-                    logger.debug("WAQI error for %s variant '%s': %s", city, variant, e)
-                    time.sleep(0.5)
+            url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}"
+            try:
+                r = session.get(url, timeout=12)
+                if r.status_code != 200:
+                    logger.warning("OpenWeather AQI failed for %s: %s", city, r.status_code)
+                    time.sleep(1)
                     continue
-            
-            if not success:
-                logger.warning("Could not fetch AQI data for %s after trying all variants", city)
-                lat, lon = CITY_COORDINATES[city]
-                url = f"https://api.waqi.info/feed/geo:{lat};{lon}/?token={WAQI_API_TOKEN}"
-                try:
-                    r = session.get(url, timeout=12)
-                    if r.status_code == 200:
-                        d = r.json()
-                        if d.get("status") == "ok":
-                            aqi_value = d["data"].get("aqi", 0)
-                            iaqi = d["data"].get("iaqi", {})
-                            
-                            pm25_aqi = 0.0
-                            if iaqi and "pm25" in iaqi:
-                                try:
-                                    pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
-                                except Exception:
-                                    pm25_aqi = 0.0
-                            
-                            pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
-                            
-                            final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) or (isinstance(aqi_value, str) and str(aqi_value).replace('.','').isdigit()) else 0
-                            
-                            out.append({
-                                "city": city,
-                                "aqi": final_aqi,
-                                "pm25": pm25_concentration,
-                                "health_risk_level": health_risk_from_aqi(final_aqi)
-                            })
-                            logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5 AQI=%.1f, PM2.5 Concentration=%.1f µg/m³ using geo coordinates", 
-                                       city, final_aqi, pm25_aqi, pm25_concentration)
-                except Exception as e:
-                    logger.error("Geo-based WAQI lookup failed for %s: %s", city, e)
-            
-            time.sleep(1)
-            
+                
+                d = r.json()
+                if "list" not in d or len(d["list"]) == 0:
+                    logger.warning("No AQI data for %s", city)
+                    time.sleep(1)
+                    continue
+                
+                air_data = d["list"][0]
+                components = air_data.get("components", {})
+                
+                pm25_concentration = float(components.get("pm2_5", 0.0))
+                pm10 = float(components.get("pm10", 0.0))
+                
+                calculated_aqi = self._pm25_to_aqi(pm25_concentration)
+                
+                out.append({
+                    "city": city,
+                    "aqi": calculated_aqi,
+                    "pm25": pm25_concentration,
+                    "health_risk_level": health_risk_from_aqi(calculated_aqi)
+                })
+                logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5=%.1f µg/m³, PM10=%.1f µg/m³ via OpenWeather", 
+                           city, calculated_aqi, pm25_concentration, pm10)
+                
+                time.sleep(0.7 + random.random()*0.4)
+                
+            except Exception as e:
+                logger.exception("OpenWeather AQI error for %s: %s", city, e)
+                time.sleep(1)
+        
         logger.info("Collected AQI for %d cities", len(out))
         return out
 
