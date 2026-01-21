@@ -197,6 +197,21 @@ class WeatherCollector:
         return out
 
 class AQICollector:
+    def _pm25_to_aqi(self, pm25):
+        """Convert PM2.5 concentration to AQI"""
+        if pm25 <= 12.0:
+            return int((50 / 12.0) * pm25)
+        elif pm25 <= 35.4:
+            return int(51 + ((100 - 51) / (35.4 - 12.1)) * (pm25 - 12.1))
+        elif pm25 <= 55.4:
+            return int(101 + ((150 - 101) / (55.4 - 35.5)) * (pm25 - 35.5))
+        elif pm25 <= 150.4:
+            return int(151 + ((200 - 151) / (150.4 - 55.5)) * (pm25 - 55.5))
+        elif pm25 <= 250.4:
+            return int(201 + ((300 - 201) / (250.4 - 150.5)) * (pm25 - 150.5))
+        else:
+            return int(301 + ((400 - 301) / (350.4 - 250.5)) * (pm25 - 250.5))
+    
     def _convert_aqi_to_pm25(self, aqi):
         """Convert AQI to PM2.5 concentration"""
         if aqi <= 50:
@@ -212,59 +227,118 @@ class AQICollector:
         else:
             return 250.5 + (aqi - 301) * (350.4 - 250.5) / (400 - 301)
     
+    def _get_aqicn_data(self, city, lat, lon):
+        """Try to get data from AQICN"""
+        url = f"https://api.waqi.info/feed/geo:{lat};{lon}/?token={WAQI_API_TOKEN}"
+        try:
+            r = session.get(url, timeout=12)
+            if r.status_code != 200:
+                return None
+            
+            d = r.json()
+            if d.get("status") != "ok":
+                return None
+            
+            data = d.get("data", {})
+            station_location = data.get("city", {}).get("geo", [])
+            station_name = data.get("city", {}).get("name", "Unknown")
+            
+            if station_location:
+                station_lat, station_lon = station_location
+                distance = haversine_km(lat, lon, station_lat, station_lon)
+                
+                if distance > 50:
+                    logger.warning("AQICN station '%s' is %.1f km away from %s - too far, rejecting", 
+                                 station_name, distance, city)
+                    return None
+            
+            aqi_value = data.get("aqi", 0)
+            iaqi = data.get("iaqi", {})
+            pm25_aqi = 0.0
+            
+            if iaqi and "pm25" in iaqi:
+                try:
+                    pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
+                except Exception:
+                    pm25_aqi = 0.0
+            
+            if pm25_aqi == 0.0 and aqi_value > 0:
+                pm25_aqi = float(aqi_value)
+            
+            pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
+            final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) else 0
+            
+            return {
+                "aqi": final_aqi,
+                "pm25": pm25_concentration,
+                "source": f"AQICN ({station_name})",
+                "distance_km": distance if station_location else 0
+            }
+        except Exception as e:
+            logger.debug("AQICN error for %s: %s", city, e)
+            return None
+    
+    def _get_openweather_data(self, city, lat, lon):
+        """Get data from OpenWeather Air Pollution API"""
+        url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}"
+        try:
+            r = session.get(url, timeout=12)
+            if r.status_code != 200:
+                return None
+            
+            d = r.json()
+            if "list" not in d or len(d["list"]) == 0:
+                return None
+            
+            air_data = d["list"][0]
+            components = air_data.get("components", {})
+            
+            pm25_concentration = float(components.get("pm2_5", 0.0))
+            calculated_aqi = self._pm25_to_aqi(pm25_concentration)
+            
+            return {
+                "aqi": calculated_aqi,
+                "pm25": pm25_concentration,
+                "source": "OpenWeather",
+                "distance_km": 0
+            }
+        except Exception as e:
+            logger.debug("OpenWeather error for %s: %s", city, e)
+            return None
+    
     def collect_aqi_data(self):
         out = []
         for city in CITY_COORDINATES.keys():
             lat, lon = CITY_COORDINATES[city]
             
-            url = f"https://api.waqi.info/feed/geo:{lat};{lon}/?token={WAQI_API_TOKEN}"
-            try:
-                r = session.get(url, timeout=12)
-                if r.status_code != 200:
-                    logger.warning("AQICN failed for %s: %s", city, r.status_code)
-                    time.sleep(1)
-                    continue
-                
-                d = r.json()
-                if d.get("status") != "ok":
-                    logger.warning("AQICN not ok for %s: %s", city, d.get("data"))
-                    time.sleep(1)
-                    continue
-                
-                data = d.get("data", {})
-                aqi_value = data.get("aqi", 0)
-                
-                iaqi = data.get("iaqi", {})
-                pm25_aqi = 0.0
-                if iaqi and "pm25" in iaqi:
-                    try:
-                        pm25_aqi = float(iaqi["pm25"].get("v", 0.0))
-                    except Exception:
-                        pm25_aqi = 0.0
-                
-                if pm25_aqi == 0.0 and aqi_value > 0:
-                    pm25_aqi = float(aqi_value)
-                
-                pm25_concentration = self._convert_aqi_to_pm25(pm25_aqi) if pm25_aqi > 0 else 0.0
-                
-                final_aqi = int(aqi_value) if isinstance(aqi_value, (int, float)) or (isinstance(aqi_value, str) and str(aqi_value).replace('.','').replace('-','').isdigit()) else 0
-                
-                station_name = data.get("city", {}).get("name", "Unknown")
-                
-                out.append({
-                    "city": city,
-                    "aqi": final_aqi,
-                    "pm25": pm25_concentration,
-                    "health_risk_level": health_risk_from_aqi(final_aqi)
-                })
-                logger.info("Successfully collected AQI for %s: AQI=%d, PM2.5=%.1f µg/m³ from station '%s'", 
-                           city, final_aqi, pm25_concentration, station_name)
-                
-                time.sleep(0.7 + random.random()*0.4)
-                
-            except Exception as e:
-                logger.exception("AQICN error for %s: %s", city, e)
+            aqicn_data = self._get_aqicn_data(city, lat, lon)
+            openweather_data = self._get_openweather_data(city, lat, lon)
+            
+            selected_data = None
+            
+            if aqicn_data and aqicn_data["distance_km"] <= 50:
+                selected_data = aqicn_data
+                logger.info("Using AQICN for %s: AQI=%d, PM2.5=%.1f µg/m³, Station: %s (%.1f km away)", 
+                           city, selected_data["aqi"], selected_data["pm25"], 
+                           selected_data["source"], selected_data["distance_km"])
+            elif openweather_data:
+                selected_data = openweather_data
+                logger.info("Using OpenWeather for %s: AQI=%d, PM2.5=%.1f µg/m³ (AQICN station too far or unavailable)", 
+                           city, selected_data["aqi"], selected_data["pm25"])
+            else:
+                logger.warning("No AQI data available for %s from any source", city)
                 time.sleep(1)
+                continue
+            
+            out.append({
+                "city": city,
+                "aqi": selected_data["aqi"],
+                "pm25": selected_data["pm25"],
+                "health_risk_level": health_risk_from_aqi(selected_data["aqi"]),
+                "data_source": selected_data["source"]
+            })
+            
+            time.sleep(0.8 + random.random()*0.4)
         
         logger.info("Collected AQI for %d cities", len(out))
         return out
