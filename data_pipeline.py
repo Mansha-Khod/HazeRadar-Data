@@ -233,13 +233,10 @@ class AQICollector:
             pm2_5 = air_quality.get("pm2_5", 0.0)
             pm10 = air_quality.get("pm10", 0.0)
             
-            aqi_from_index = us_epa_index * 50 if us_epa_index > 0 else 0
-            
-            if aqi_from_index == 0 and pm2_5 > 0:
-                aqi_from_index = self._pm25_to_aqi(pm2_5)
+            calculated_aqi = self._pm25_to_aqi(pm2_5) if pm2_5 > 0 else 0
             
             return {
-                "aqi": int(aqi_from_index),
+                "aqi": int(calculated_aqi),
                 "pm25": float(pm2_5),
                 "pm10": float(pm10),
                 "source": "WeatherAPI.com",
