@@ -1,0 +1,254 @@
+:root {
+    --bg: #0b1222;
+    --card: #172033;
+    --muted: #9fb2c8;
+    --primary-color: #06b6d4;
+    /* cyan-500 */
+    --accent-color: #f97316;
+    /* orange-600 */
+    --text-light: #e9f7ff;
+    /* Pure white/light color for text */
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-light);
+    /* Apply light text color globally */
+    font-family: Inter, Roboto, Arial, sans-serif;
+}
+
+.app {
+    display: flex;
+    height: 100vh;
+}
+
+/* Sidebar Styling */
+#sidebar {
+    width: 350px;
+    padding: 18px;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background: #111827;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+    /* Ensure inputs are visible */
+}
+
+/* Pastikan ini ada agar peta punya tinggi */
+#map {
+    height: 100%;
+    width: 100%;
+    min-height: 500px;
+    /* Tambahkan ini untuk jaga-jaga */
+}
+
+h2 {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Panel Card Styling */
+.panel {
+    background: var(--card);
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Button Primary Overrides (for simulation) */
+.btn-primary {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    font-weight: 600;
+    transition: background-color 0.2s;
+    border-radius: 8px;
+}
+
+.btn-primary:hover {
+    background-color: #ea580c;
+    /* darker orange */
+    border-color: #ea580c;
+}
+
+/* Dropdown/Form Select Styling */
+.form-select,
+.form-control {
+    background-color: #2c3e50;
+    color: var(--text-light);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+}
+
+.form-select:focus,
+.form-control:focus {
+    background-color: #2c3e50;
+    color: var(--text-light);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(6, 182, 212, 0.25);
+}
+
+/* Slider Panel Styling */
+#sliderPanel {
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Slider Track/Thumb Overrides (Minimal styling for dark theme visibility) */
+#hourSlider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    outline: none;
+}
+
+#hourSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+    margin-top: -4px;
+}
+
+#hourSlider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+/* Status/Toast Box */
+.toastBox {
+    font-size: 1rem;
+    margin-top: 10px;
+    color: var(--primary-color);
+    font-weight: 500;
+    min-height: 20px;
+}
+
+/* City Marker Styles */
+/* REMOVED .leaflet-interactive.city-marker:hover {} to prevent shaking/scaling */
+.leaflet-interactive.city-marker {
+    cursor: default;
+    /* Keep cursor standard */
+    transition: all 0.2s ease-in-out;
+}
+
+/* Fixed CSS for the descriptive text */
+.sidebar-description {
+    color: var(--text-light) !important;
+    /* Forces the text color to white/light */
+    font-size: 0.95rem;
+}
+
+/* === Replay Link Styles (White to Orange) === */
+#replayBtn {
+    color: var(--text-light);
+    /* White text */
+    text-align: center;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 8px 0;
+    /* Add vertical padding for a larger click target */
+    display: block;
+    /* Takes full width */
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+#replayBtn:hover {
+    color: var(--accent-color);
+    /* Orange on hover */
+    text-decoration: underline;
+}
+
+/* =========================================== */
+
+
+/* === NEW STYLES FOR SCROLLABLE WIND DATA === */
+#windForecastDisplay {
+    max-height: 150px;
+    /* Fixed height */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
+    padding: 5px;
+    border: 1px solid #374151;
+    border-radius: 4px;
+}
+
+/* --- FIX FOR INSTRUCTION TEXT COLOR --- */
+.text-light-override {
+    color: var(--text-light) !important;
+}
+
+/* =========================================== */
+
+/* Responsive considerations for smaller screens */
+@media (max-width: 768px) {
+    .app {
+        flex-direction: column;
+    }
+
+    #sidebar {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    #map {
+        height: 50vh;
+    }
+}
+
+/* EFEK ASAP REALISTIS (Ganti kode .haze-smoke-effect yang lama dengan ini) */
+
+.haze-smoke-effect {
+    /* 1. Blur Kuat: Menghilangkan bentuk lingkaran tegas */
+    filter: blur(20px);
+    -webkit-filter: blur(20px);
+
+    /* 2. Blending: Agar tumpukan asap menjadi lebih gelap/pekat secara alami */
+    mix-blend-mode: multiply;
+
+    /* 3. Transisi halus saat asap membesar */
+    transition: all 0.5s ease-out;
+
+    /* Agar tidak menghalangi klik pada peta */
+    pointer-events: none;
+}
+
+/* Animasi berdenyut pelan agar terlihat hidup */
+.haze-smoke-effect path {
+    animation: smokePulse 4s infinite alternate ease-in-out;
+    transform-origin: center;
+}
+
+@keyframes smokePulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: scale(1.15);
+        opacity: 0.5;
+    }
+}
