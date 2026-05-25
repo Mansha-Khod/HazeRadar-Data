@@ -1,6 +1,10 @@
 # HazeRadar
 
 HazeRadar is an air quality forecasting and haze detection system designed to monitor and predict pollution conditions using machine learning and real-time environmental data.
+![Python](https://img.shields.io/badge/Python-3.x-blue?logo=python)
+![React](https://img.shields.io/badge/React-Frontend-61DAFB?logo=react)
+![PyTorch](https://img.shields.io/badge/PyTorch-ML-EE4C2C?logo=pytorch)
+![Deployed](https://img.shields.io/badge/Deployed-Railway-purple)
 
 The project combines:
 - PM2.5 forecasting
